@@ -1,12 +1,8 @@
--- 🚀 Global Checkpoint Teleport
--- Detect all Checkpoint1..700 dynamically without proximity
-
-if not game:IsLoaded() then game.Loaded:Wait() end
+-- 🚀 Static 1-700 Checkpoints Teleport
+-- Responsive & Draggable GUI
 
 local Players = game:GetService("Players")
-local Workspace = game:GetService("Workspace")
 local UIS = game:GetService("UserInputService")
-
 local player = Players.LocalPlayer
 
 -- Reset GUI lama
@@ -14,58 +10,20 @@ local oldGui = player:FindFirstChild("CheckpointTeleportGUI")
 if oldGui then oldGui:Destroy() end
 getgenv().CheckpointTeleportLoaded = true
 
--- STORAGE
+-- ======= GENERATE LIST 1-700 =======
 local checkpoints = {}
-
--- ====== HELPERS ======
-local function getHRP()
-    local char = player.Character or player.CharacterAdded:Wait()
-    return char:WaitForChild("HumanoidRootPart")
+for i = 1, 700 do
+    table.insert(checkpoints, {name = "Checkpoint"..i, position = Vector3.new(0,0,0)})
 end
 
-local function getPos(obj)
-    if obj:IsA("BasePart") then return obj.Position end
-    if obj:IsA("Model") then
-        local part = obj.PrimaryPart or obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChildWhichIsA("BasePart")
-        return part and part.Position
-    end
-end
-
--- ====== VALID CHECKPOINT ======
-local function isCheckpoint(obj)
-    -- Only official checkpoint names
-    local name = obj.Name
-    if name:match("^Checkpoint%d+$") then return true end
-    if name:match("^TeleportCp%d+$") then return true end
-    return false
-end
-
-local function register(obj)
-    if checkpoints[obj] then return end
-    if not isCheckpoint(obj) then return end
-    local pos = getPos(obj)
-    if pos then checkpoints[obj] = {name=obj.Name, position=pos} end
-end
-
-local function unregister(obj)
-    checkpoints[obj] = nil
-end
-
--- ====== SCAN WORKSPACE ======
-for _, obj in ipairs(Workspace:GetDescendants()) do
-    register(obj)
-end
-Workspace.DescendantAdded:Connect(register)
-Workspace.DescendantRemoving:Connect(unregister)
-
--- ====== GUI ======
+-- ======= GUI =======
 local gui = Instance.new("ScreenGui")
 gui.Name = "CheckpointTeleportGUI"
 gui.ResetOnSpawn = false
 gui.Parent = player:WaitForChild("PlayerGui")
 
 local main = Instance.new("Frame")
-main.Size = UDim2.new(0,320,0,420)
+main.Size = UDim2.new(0, 320, 0, 420)
 main.Position = UDim2.new(0.7,0,0.3,0)
 main.BackgroundColor3 = Color3.fromRGB(28,28,32)
 main.BorderSizePixel = 0
@@ -106,7 +64,7 @@ local title = Instance.new("TextLabel", header)
 title.Size = UDim2.new(1,-50,1,0)
 title.Position = UDim2.new(0,10,0,0)
 title.BackgroundTransparency = 1
-title.Text = "🏔️ Checkpoints"
+title.Text = "🏔️ Checkpoints 1-700"
 title.Font = Enum.Font.GothamBold
 title.TextSize = 18
 title.TextXAlignment = Enum.TextXAlignment.Left
@@ -145,28 +103,26 @@ end)
 -- REFRESH GUI
 local function refreshGUI()
     for _, c in ipairs(scroll:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
-    for _, data in pairs(checkpoints) do
+    for _, data in ipairs(checkpoints) do
         local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(1,0,0,38)
+        btn.Size = UDim2.new(1,0,0,30)
         btn.BackgroundColor3 = Color3.fromRGB(55,55,62)
         btn.TextColor3 = Color3.fromRGB(235,235,235)
         btn.Font = Enum.Font.Gotham
-        btn.TextSize = 15
+        btn.TextSize = 14
         btn.Text = data.name
         btn.Parent = scroll
-        Instance.new("UICorner", btn).CornerRadius = UDim.new(0,10)
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0,8)
 
+        -- Teleport function
         btn.MouseButton1Click:Connect(function()
-            getHRP().CFrame = CFrame.new(data.position + Vector3.new(0,3,0))
+            local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                hrp.CFrame = CFrame.new(data.position + Vector3.new(0,3,0))
+            end
         end)
     end
 end
 
--- AUTO REFRESH
-task.spawn(function()
-    while task.wait(1) do
-        refreshGUI()
-    end
-end)
-
-print("✅ Global Checkpoint Teleport Loaded | 700+ checkpoints detected")
+refreshGUI()
+print("✅ Static 1-700 Checkpoints Teleport Loaded")
