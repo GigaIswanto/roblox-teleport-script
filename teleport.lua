@@ -1,6 +1,6 @@
 -- 🚀 Full Map Checkpoint Teleport GUI
 -- Detect all checkpoints globally - Optimized for 700+ checkpoints
--- Draggable, responsive, with reliable teleport system
+-- Draggable, responsive, with reliable teleport syste
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
