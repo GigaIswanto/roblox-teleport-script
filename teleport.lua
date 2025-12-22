@@ -1,167 +1,187 @@
--- Dynamic Checkpoint Teleport with Modern UI
+-- ✅ Dynamic Checkpoint Teleport | Final Version
+-- Responsive, Draggable, Auto-Reset + Close Button
 -- GitHub Raw Ready
 
 if not game:IsLoaded() then game.Loaded:Wait() end
-if getgenv().CheckpointTeleportLoaded then return end
-getgenv().CheckpointTeleportLoaded = true
 
--- SERVICES
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
+local UIS = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
-local LocalPlayer = Players.LocalPlayer
 
--- PLAYER ROOT
+local player = Players.LocalPlayer
+
+-- ================= RESET GUI =================
+local oldGui = player:FindFirstChild("CheckpointTeleportGUI")
+if oldGui then oldGui:Destroy() end
+
+if getgenv().CheckpointTeleportLoaded then
+    -- reset listener jika ada
+    getgenv().CheckpointTeleportLoaded = false
+end
+getgenv().CheckpointTeleportLoaded = true
+
+-- ================= STORAGE =================
+local checkpoints = {}
+local KEYWORDS = {"checkpoint","check","cp","spawn","save","respawn","stage","level"}
+
+-- ================= HELPERS =================
 local function getHRP()
-    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local char = player.Character or player.CharacterAdded:Wait()
     return char:WaitForChild("HumanoidRootPart")
 end
 
--- CHECKPOINT STORAGE
-local checkpoints = {}
-
--- POSITION HELPER
 local function getPosition(obj)
-    if obj:IsA("BasePart") then
-        return obj.Position
-    elseif obj:IsA("Model") then
-        local pp = obj.PrimaryPart
+    if obj:IsA("BasePart") then return obj.Position end
+    if obj:IsA("Model") then
+        local part = obj.PrimaryPart
             or obj:FindFirstChild("HumanoidRootPart")
             or obj:FindFirstChildWhichIsA("BasePart")
-        return pp and pp.Position
+        return part and part.Position
     end
 end
 
--- VALID CHECKPOINT CHECK
+local function nameMatch(name)
+    name = name:lower()
+    for _, k in ipairs(KEYWORDS) do
+        if name:find(k,1,true) then return true end
+    end
+end
+
+local function hasVisualMarker(obj)
+    return obj:FindFirstChildWhichIsA("BillboardGui", true)
+        or obj:FindFirstChildWhichIsA("ProximityPrompt", true)
+end
+
 local function isCheckpoint(obj)
     if obj:IsA("SpawnLocation") then return true end
-    if CollectionService:HasTag(obj, "Checkpoint") or CollectionService:HasTag(obj, "CP") then return true end
+    if CollectionService:HasTag(obj,"Checkpoint") or CollectionService:HasTag(obj,"CP") then return true end
     if obj:GetAttribute("IsCheckpoint") == true then return true end
-    local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
-    if prompt then
-        local text = (prompt.ActionText or ""):lower()
-        if text:find("checkpoint") or text:find("spawn") or text:find("save") then return true end
-    end
+    if hasVisualMarker(obj) then return true end
+
+    -- fallback by name + size
+    if obj:IsA("BasePart") and nameMatch(obj.Name) and obj.Size.Magnitude < 100 then return true end
+    if obj:IsA("Model") and nameMatch(obj.Name) then return true end
+
     return false
 end
 
--- REGISTER & UNREGISTER CHECKPOINT
-local function registerCheckpoint(obj)
+local function register(obj)
     if checkpoints[obj] then return end
     if not isCheckpoint(obj) then return end
     local pos = getPosition(obj)
-    if pos then checkpoints[obj] = {name = obj.Name, position = pos} end
+    if pos then checkpoints[obj] = {name=obj.Name, position=pos} end
 end
-local function unregisterCheckpoint(obj)
+
+local function unregister(obj)
     checkpoints[obj] = nil
 end
 
--- INITIAL SCAN & DYNAMIC UPDATE
-for _, obj in ipairs(Workspace:GetDescendants()) do registerCheckpoint(obj) end
-Workspace.DescendantAdded:Connect(registerCheckpoint)
-Workspace.DescendantRemoving:Connect(unregisterCheckpoint)
+-- INITIAL SCAN
+for _, obj in ipairs(Workspace:GetDescendants()) do register(obj) end
+Workspace.DescendantAdded:Connect(register)
+Workspace.DescendantRemoving:Connect(unregister)
 
 -- ================= GUI =================
-
--- ScreenGui
 local gui = Instance.new("ScreenGui")
 gui.Name = "CheckpointTeleportGUI"
-gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 gui.ResetOnSpawn = false
+gui.Parent = player:WaitForChild("PlayerGui")
 
--- Main Frame
-local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 280, 0, 450)
-frame.Position = UDim2.new(1, -300, 0.5, -225)
-frame.AnchorPoint = Vector2.new(1,0.5)
-frame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-frame.BorderSizePixel = 0
-frame.Parent = gui
+local main = Instance.new("Frame")
+main.Size = UDim2.new(0,320,0,420)
+main.Position = UDim2.new(0.7,0,0.3,0)
+main.BackgroundColor3 = Color3.fromRGB(28,28,32)
+main.BorderSizePixel = 0
+main.Parent = gui
+Instance.new("UICorner", main).CornerRadius = UDim.new(0,14)
 
--- UICorner for rounded edges
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 12)
-corner.Parent = frame
+-- DRAG
+do
+    local dragging, dragStart, startPos
+    main.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = main.Position
+        end
+    end)
+    UIS.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            main.Position = startPos + UDim2.fromOffset(delta.X, delta.Y)
+        end
+    end)
+    UIS.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+end
 
--- Title Bar
-local titleBar = Instance.new("Frame")
-titleBar.Size = UDim2.new(1, 0, 0, 40)
-titleBar.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
-titleBar.BorderSizePixel = 0
-titleBar.Parent = frame
+-- HEADER
+local header = Instance.new("Frame", main)
+header.Size = UDim2.new(1,0,0,44)
+header.BackgroundColor3 = Color3.fromRGB(40,40,46)
+header.BorderSizePixel = 0
+Instance.new("UICorner", header).CornerRadius = UDim.new(0,14)
 
-local titleText = Instance.new("TextLabel")
-titleText.Size = UDim2.new(1, -10, 1, 0)
-titleText.Position = UDim2.new(0, 10, 0, 0)
-titleText.BackgroundTransparency = 1
-titleText.Text = "📍 Checkpoints"
-titleText.TextColor3 = Color3.fromRGB(220, 220, 220)
-titleText.Font = Enum.Font.GothamBold
-titleText.TextSize = 18
-titleText.TextXAlignment = Enum.TextXAlignment.Left
-titleText.Parent = titleBar
+local title = Instance.new("TextLabel", header)
+title.Size = UDim2.new(1,-50,1,0)
+title.Position = UDim2.new(0,10,0,0)
+title.BackgroundTransparency = 1
+title.Text = "📍 Checkpoint Teleport"
+title.Font = Enum.Font.GothamBold
+title.TextSize = 18
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.TextColor3 = Color3.fromRGB(230,230,230)
 
--- Refresh Button
-local refreshBtn = Instance.new("TextButton")
-refreshBtn.Size = UDim2.new(0, 35, 0, 35)
-refreshBtn.Position = UDim2.new(1, -40, 0, 2)
-refreshBtn.BackgroundColor3 = Color3.fromRGB(70,70,75)
-refreshBtn.Text = "⟳"
-refreshBtn.Font = Enum.Font.Gotham
-refreshBtn.TextSize = 22
-refreshBtn.TextColor3 = Color3.fromRGB(200,200,200)
-refreshBtn.BorderSizePixel = 0
-refreshBtn.Parent = titleBar
-
-local btnCorner = Instance.new("UICorner")
-btnCorner.CornerRadius = UDim.new(0, 8)
-btnCorner.Parent = refreshBtn
-
-refreshBtn.MouseButton1Click:Connect(function()
-    -- Re-scan
-    checkpoints = {}
-    for _, obj in ipairs(Workspace:GetDescendants()) do registerCheckpoint(obj) end
+-- CLOSE BUTTON
+local closeBtn = Instance.new("TextButton", header)
+closeBtn.Size = UDim2.new(0,30,0,30)
+closeBtn.Position = UDim2.new(1,-35,0,7)
+closeBtn.Text = "✕"
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 18
+closeBtn.TextColor3 = Color3.fromRGB(220,220,220)
+closeBtn.BackgroundColor3 = Color3.fromRGB(70,70,75)
+closeBtn.BorderSizePixel = 0
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0,6)
+closeBtn.MouseButton1Click:Connect(function()
+    gui:Destroy()
+    getgenv().CheckpointTeleportLoaded = false
 end)
 
--- Scrolling Frame for checkpoints
-local scroll = Instance.new("ScrollingFrame")
-scroll.Size = UDim2.new(1, -10, 1, -50)
-scroll.Position = UDim2.new(0, 5, 0, 45)
-scroll.BackgroundTransparency = 1
-scroll.BorderSizePixel = 0
-scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+-- SCROLL FRAME
+local scroll = Instance.new("ScrollingFrame", main)
+scroll.Position = UDim2.new(0,10,0,54)
+scroll.Size = UDim2.new(1,-20,1,-64)
+scroll.CanvasSize = UDim2.new(0,0,0,0)
 scroll.ScrollBarThickness = 6
-scroll.Parent = frame
+scroll.BackgroundTransparency = 1
 
-local listLayout = Instance.new("UIListLayout")
-listLayout.Padding = UDim.new(0, 6)
-listLayout.Parent = scroll
-
--- AUTO UPDATE CanvasSize
-listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-    scroll.CanvasSize = UDim2.new(0,0,0,listLayout.AbsoluteContentSize.Y + 10)
+local layout = Instance.new("UIListLayout", scroll)
+layout.Padding = UDim.new(0,8)
+layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    scroll.CanvasSize = UDim2.new(0,0,0,layout.AbsoluteContentSize.Y+10)
 end)
 
--- ================= Refresh GUI =================
+-- REFRESH GUI
 local function refreshGUI()
     for _, c in ipairs(scroll:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
     for _, data in pairs(checkpoints) do
         local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(1, 0, 0, 36)
-        btn.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
-        btn.TextColor3 = Color3.fromRGB(220,220,220)
+        btn.Size = UDim2.new(1,0,0,38)
+        btn.BackgroundColor3 = Color3.fromRGB(55,55,62)
+        btn.TextColor3 = Color3.fromRGB(235,235,235)
         btn.Font = Enum.Font.Gotham
-        btn.TextSize = 16
+        btn.TextSize = 15
         btn.Text = data.name
         btn.Parent = scroll
-
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 8)
-        corner.Parent = btn
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0,10)
 
         btn.MouseButton1Click:Connect(function()
-            local hrp = getHRP()
-            hrp.CFrame = CFrame.new(data.position + Vector3.new(0,3,0))
+            getHRP().CFrame = CFrame.new(data.position + Vector3.new(0,3,0))
         end)
     end
 end
@@ -173,4 +193,4 @@ task.spawn(function()
     end
 end)
 
-print("✅ Dynamic Checkpoint Teleport Loaded with Responsive UI")
+print("✅ Checkpoint Teleport Loaded | GUI reset enabled")
