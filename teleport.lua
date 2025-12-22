@@ -1,6 +1,6 @@
--- 🚀 Full Map Checkpoint Teleport GUI
--- Detect all checkpoints globally - Optimized for 700+ checkpoints
--- Draggable, responsive, with reliable teleport syste
+-- 🚀 Static Checkpoint Teleport GUI
+-- TeleportCp1 sampai TeleportCp700
+-- Simple and reliable
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -13,152 +13,82 @@ local oldGui = player:FindFirstChild("CheckpointTeleportGUI")
 if oldGui then oldGui:Destroy() end
 getgenv().CheckpointTeleportLoaded = true
 
--- Storage
-local checkpoints = {}
-local checkpointMap = {} -- Map nama -> data untuk quick lookup
-local needsRefresh = false
+-- Storage untuk checkpoint data
+local checkpointData = {} -- Map: number -> {name, obj, position}
 
--- Helper: Get position from any object type
+-- Helper: Get position from object
 local function getPosition(obj)
+    if not obj or not obj.Parent then return nil end
+    
     if obj:IsA("BasePart") then
-        return obj.Position, obj
+        return obj.Position
     elseif obj:IsA("Model") then
         local part = obj.PrimaryPart or obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChildWhichIsA("BasePart")
         if part then
-            return part.Position, part
+            return part.Position
         end
     end
     
-    -- Deep search untuk BasePart di dalam objek
+    -- Deep search
     for _, descendant in ipairs(obj:GetDescendants()) do
         if descendant:IsA("BasePart") then
-            return descendant.Position, descendant
-        end
-    end
-    
-    return nil, nil
-end
-
--- Check if object name matches checkpoint pattern
-local function isCheckpointName(name)
-    name = name:lower()
-    
-    -- Pattern yang lebih spesifik berdasarkan screenshot
-    if name:match("^checkpoint%d+$") then return true end
-    if name:match("^teleportcp%d+$") then return true end
-    if name:match("^cp%d+$") then return true end
-    
-    -- Pattern dengan underscore
-    if name:match("^checkpoint_%d+$") then return true end
-    if name:match("^teleportcp_%d+$") then return true end
-    
-    -- Pattern lebih fleksibel
-    if name:match("checkpoint") and name:match("%d+") then return true end
-    if name:match("teleportcp") and name:match("%d+") then return true end
-    
-    return false
-end
-
--- Register checkpoint
-local function registerCheckpoint(obj)
-    if not obj or not obj.Parent then return end
-    
-    local name = obj.Name
-    if not isCheckpointName(name) then return end
-    
-    local pos, part = getPosition(obj)
-    if not pos then return end
-    
-    -- Skip jika sudah ada dengan nama yang sama
-    if checkpointMap[name] then return end
-    
-    local data = {
-        name = name,
-        obj = obj,
-        part = part,
-        position = pos
-    }
-    
-    checkpoints[obj] = data
-    checkpointMap[name] = data
-    
-    print("✅ Found:", name, "| Type:", obj.ClassName, "| Pos:", math.floor(pos.X), math.floor(pos.Y), math.floor(pos.Z))
-end
-
--- Aggressive scan: Scan semua BasePart dan Model di Workspace
-local function scanAllCheckpoints()
-    print("🔍 Scanning all objects in Workspace...")
-    
-    local scanned = 0
-    for _, obj in ipairs(Workspace:GetDescendants()) do
-        scanned = scanned + 1
-        -- Check jika objek itu sendiri adalah checkpoint
-        if obj:IsA("BasePart") or obj:IsA("Model") then
-            registerCheckpoint(obj)
-        end
-    end
-    
-    print("📊 Scanned", scanned, "objects")
-    
-    local count = 0
-    for _ in pairs(checkpoints) do count = count + 1 end
-    print("✅ Total checkpoints found:", count)
-    
-    return count
-end
-
--- Fallback: Cari checkpoint secara manual berdasarkan nama
-local function findCheckpointByName(name)
-    -- Coba berbagai variasi nama
-    local variations = {
-        name,
-        "Checkpoint" .. name:match("%d+"),
-        "TeleportCp" .. name:match("%d+"),
-        "CP" .. name:match("%d+"),
-        name:gsub("checkpoint", "Checkpoint"),
-        name:gsub("teleportcp", "TeleportCp")
-    }
-    
-    for _, varName in ipairs(variations) do
-        local found = Workspace:FindFirstChild(varName, true)
-        if found then
-            registerCheckpoint(found)
-            return found
+            return descendant.Position
         end
     end
     
     return nil
 end
 
--- Generate checkpoint list dari 1-700 sebagai fallback
-local function generateStaticCheckpoints()
-    print("🔄 Generating static checkpoint list (1-700)...")
+-- Find checkpoint by number
+local function findCheckpoint(num)
+    local names = {
+        "TeleportCp" .. num,
+        "Checkpoint" .. num,
+        "CP" .. num,
+        "teleportcp" .. num,
+        "checkpoint" .. num,
+        "cp" .. num
+    }
     
-    for i = 1, 700 do
-        local names = {
-            "Checkpoint" .. i,
-            "TeleportCp" .. i,
-            "CP" .. i,
-            "checkpoint" .. i,
-            "teleportcp" .. i,
-            "cp" .. i
-        }
-        
-        for _, name in ipairs(names) do
-            local found = Workspace:FindFirstChild(name, true)
-            if found then
-                registerCheckpoint(found)
+    for _, name in ipairs(names) do
+        local found = Workspace:FindFirstChild(name, true)
+        if found then
+            local pos = getPosition(found)
+            if pos then
+                return {
+                    name = name,
+                    obj = found,
+                    position = pos
+                }
             end
         end
     end
     
-    local count = 0
-    for _ in pairs(checkpoints) do count = count + 1 end
-    print("📊 Static scan found:", count, "checkpoints")
+    return nil
+end
+
+-- Scan semua checkpoint dari 1-700
+local function scanAllCheckpoints()
+    print("🔍 Scanning TeleportCp1 to TeleportCp700...")
+    
+    local foundCount = 0
+    for i = 1, 700 do
+        local data = findCheckpoint(i)
+        if data then
+            checkpointData[i] = data
+            foundCount = foundCount + 1
+            if foundCount <= 10 or foundCount % 50 == 0 then
+                print("✅ Found:", data.name, "at", math.floor(data.position.X), math.floor(data.position.Y), math.floor(data.position.Z))
+            end
+        end
+    end
+    
+    print("📊 Total checkpoints found:", foundCount, "out of 700")
+    return foundCount
 end
 
 -- Reliable teleport function
-local function teleportToCheckpoint(data)
+local function teleportToCheckpoint(num)
     local character = player.Character
     if not character then
         print("❌ Character not found!")
@@ -171,53 +101,51 @@ local function teleportToCheckpoint(data)
         return false
     end
     
-    -- Method 1: Teleport ke posisi yang sudah disimpan
-    if data.position then
+    local data = checkpointData[num]
+    
+    -- Method 1: Use saved position
+    if data and data.position then
         hrp.CFrame = CFrame.new(data.position + Vector3.new(0, 3, 0))
-        print("✅ Teleported to:", data.name, "at", data.position)
+        print("✅ Teleported to TeleportCp" .. num)
         return true
     end
     
-    -- Method 2: Cari ulang objek checkpoint
-    if data.obj and data.obj.Parent then
-        local pos, part = getPosition(data.obj)
-        if pos then
-            hrp.CFrame = CFrame.new(pos + Vector3.new(0, 3, 0))
-            print("✅ Teleported to:", data.name, "at", pos)
-            return true
-        end
+    -- Method 2: Find checkpoint again
+    local found = findCheckpoint(num)
+    if found and found.position then
+        checkpointData[num] = found -- Update cache
+        hrp.CFrame = CFrame.new(found.position + Vector3.new(0, 3, 0))
+        print("✅ Teleported to TeleportCp" .. num)
+        return true
     end
     
-    -- Method 3: Cari berdasarkan nama
-    local found = findCheckpointByName(data.name)
-    if found then
-        local pos, part = getPosition(found)
-        if pos then
-            hrp.CFrame = CFrame.new(pos + Vector3.new(0, 3, 0))
-            print("✅ Teleported to:", data.name, "at", pos)
-            return true
-        end
-    end
-    
-    print("❌ Failed to teleport to:", data.name)
+    print("❌ TeleportCp" .. num .. " not found!")
     return false
 end
 
 -- Initial scan
 scanAllCheckpoints()
 
--- Retry scan dengan static generation
+-- Retry scan setelah beberapa detik
 task.spawn(function()
-    task.wait(1)
-    generateStaticCheckpoints()
-    needsRefresh = true
+    task.wait(3)
+    print("🔄 Retry scan...")
+    scanAllCheckpoints()
 end)
 
 -- Monitor untuk checkpoint baru
 Workspace.DescendantAdded:Connect(function(obj)
-    task.wait(0.1)
-    registerCheckpoint(obj)
-    needsRefresh = true
+    local name = obj.Name:lower()
+    if name:match("teleportcp") or name:match("checkpoint") then
+        local num = tonumber(name:match("%d+"))
+        if num and num >= 1 and num <= 700 then
+            task.wait(0.2)
+            local data = findCheckpoint(num)
+            if data then
+                checkpointData[num] = data
+            end
+        end
+    end
 end)
 
 -- ================= GUI =================
@@ -226,8 +154,8 @@ gui.Name = "CheckpointTeleportGUI"
 gui.Parent = player:WaitForChild("PlayerGui")
 
 local main = Instance.new("Frame")
-main.Size = UDim2.new(0, 350, 0, 500)
-main.Position = UDim2.new(0.7, 0, 0.3, 0)
+main.Size = UDim2.new(0, 380, 0, 550)
+main.Position = UDim2.new(0.7, 0, 0.25, 0)
 main.BackgroundColor3 = Color3.fromRGB(28, 28, 32)
 main.Parent = gui
 Instance.new("UICorner", main).CornerRadius = UDim.new(0, 14)
@@ -265,7 +193,7 @@ local title = Instance.new("TextLabel", header)
 title.Size = UDim2.new(1, -100, 1, 0)
 title.Position = UDim2.new(0, 10, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "🏔️ Checkpoints"
+title.Text = "🏔️ Checkpoints (1-700)"
 title.Font = Enum.Font.GothamBold
 title.TextSize = 18
 title.TextXAlignment = Enum.TextXAlignment.Left
@@ -282,9 +210,8 @@ refreshBtn.TextColor3 = Color3.fromRGB(220, 220, 220)
 refreshBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 75)
 Instance.new("UICorner", refreshBtn).CornerRadius = UDim.new(0, 6)
 refreshBtn.MouseButton1Click:Connect(function()
-    print("🔄 Manual refresh triggered...")
+    print("🔄 Refreshing checkpoints...")
     scanAllCheckpoints()
-    generateStaticCheckpoints()
     refreshGUI()
 end)
 
@@ -303,6 +230,19 @@ closeBtn.MouseButton1Click:Connect(function()
     getgenv().CheckpointTeleportLoaded = false
 end)
 
+-- SEARCH BOX
+local searchBox = Instance.new("TextBox", header)
+searchBox.Size = UDim2.new(0, 100, 0, 25)
+searchBox.Position = UDim2.new(1, -110, 0, 12)
+searchBox.PlaceholderText = "Search..."
+searchBox.Text = ""
+searchBox.Font = Enum.Font.Gotham
+searchBox.TextSize = 14
+searchBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+searchBox.BackgroundColor3 = Color3.fromRGB(55, 55, 62)
+searchBox.BorderSizePixel = 0
+Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 6)
+
 -- SCROLL FRAME
 local scroll = Instance.new("ScrollingFrame", main)
 scroll.Position = UDim2.new(0, 10, 0, 60)
@@ -312,16 +252,10 @@ scroll.ScrollBarThickness = 6
 scroll.BackgroundTransparency = 1
 
 local layout = Instance.new("UIListLayout", scroll)
-layout.Padding = UDim.new(0, 8)
+layout.Padding = UDim.new(0, 6)
 layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     scroll.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 10)
 end)
-
--- Helper: Extract number from checkpoint name
-local function extractNumber(name)
-    local num = name:match("%d+")
-    return num and tonumber(num) or 999999
-end
 
 -- REFRESH GUI
 local function refreshGUI()
@@ -330,65 +264,107 @@ local function refreshGUI()
         if c:IsA("TextButton") then c:Destroy() end
     end
     
-    -- Convert to array and sort
-    local checkpointList = {}
-    for _, data in pairs(checkpoints) do
-        table.insert(checkpointList, data)
-    end
+    local searchText = searchBox.Text:lower()
+    local foundCount = 0
     
-    -- Sort by number
-    table.sort(checkpointList, function(a, b)
-        local numA = extractNumber(a.name)
-        local numB = extractNumber(b.name)
-        if numA == numB then
-            return a.name < b.name
+    -- Create buttons untuk 1-700
+    for i = 1, 700 do
+        local data = checkpointData[i]
+        local displayName = "TeleportCp" .. i
+        
+        -- Filter berdasarkan search
+        if searchText == "" or displayName:lower():find(searchText, 1, true) then
+            local btn = Instance.new("TextButton")
+            btn.Size = UDim2.new(1, 0, 0, 36)
+            
+            -- Warna berbeda untuk checkpoint yang ditemukan vs tidak ditemukan
+            if data then
+                btn.BackgroundColor3 = Color3.fromRGB(55, 55, 62)
+                btn.TextColor3 = Color3.fromRGB(235, 235, 235)
+                btn.Text = displayName .. " ✅"
+            else
+                btn.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+                btn.TextColor3 = Color3.fromRGB(150, 150, 150)
+                btn.Text = displayName .. " ❌"
+            end
+            
+            btn.Font = Enum.Font.Gotham
+            btn.TextSize = 13
+            btn.TextXAlignment = Enum.TextXAlignment.Left
+            btn.Parent = scroll
+            Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+            
+            -- Padding untuk text
+            local padding = Instance.new("UIPadding", btn)
+            padding.PaddingLeft = UDim.new(0, 10)
+            
+            -- Hover effect
+            btn.MouseEnter:Connect(function()
+                if data then
+                    btn.BackgroundColor3 = Color3.fromRGB(65, 65, 72)
+                else
+                    btn.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+                end
+            end)
+            btn.MouseLeave:Connect(function()
+                if data then
+                    btn.BackgroundColor3 = Color3.fromRGB(55, 55, 62)
+                else
+                    btn.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+                end
+            end)
+            
+            -- Teleport on click (hanya jika ditemukan)
+            btn.MouseButton1Click:Connect(function()
+                if data then
+                    teleportToCheckpoint(i)
+                else
+                    -- Coba cari lagi
+                    local found = findCheckpoint(i)
+                    if found then
+                        checkpointData[i] = found
+                        refreshGUI()
+                        teleportToCheckpoint(i)
+                    else
+                        print("❌ TeleportCp" .. i .. " tidak ditemukan!")
+                    end
+                end
+            end)
+            
+            foundCount = foundCount + 1
         end
-        return numA < numB
-    end)
-    
-    -- Create buttons
-    for _, data in ipairs(checkpointList) do
-        local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(1, 0, 0, 40)
-        btn.BackgroundColor3 = Color3.fromRGB(55, 55, 62)
-        btn.TextColor3 = Color3.fromRGB(235, 235, 235)
-        btn.Font = Enum.Font.Gotham
-        btn.TextSize = 14
-        btn.Text = data.name .. " | " .. data.obj.ClassName
-        btn.Parent = scroll
-        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 10)
-        
-        -- Hover effect
-        btn.MouseEnter:Connect(function()
-            btn.BackgroundColor3 = Color3.fromRGB(65, 65, 72)
-        end)
-        btn.MouseLeave:Connect(function()
-            btn.BackgroundColor3 = Color3.fromRGB(55, 55, 62)
-        end)
-        
-        -- Teleport on click
-        btn.MouseButton1Click:Connect(function()
-            teleportToCheckpoint(data)
-        end)
     end
     
     -- Update title
-    local count = #checkpointList
-    title.Text = "🏔️ Checkpoints (" .. count .. ")"
+    local totalFound = 0
+    for _ in pairs(checkpointData) do totalFound = totalFound + 1 end
+    title.Text = "🏔️ Checkpoints (" .. totalFound .. "/700)"
 end
+
+-- Search functionality
+searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+    refreshGUI()
+end)
 
 -- Initial refresh
 refreshGUI()
 
--- Auto refresh
+-- Auto refresh setiap 5 detik untuk update checkpoint yang baru muncul
 task.spawn(function()
-    while task.wait(2) do
-        if needsRefresh then
+    while task.wait(5) do
+        local beforeCount = 0
+        for _ in pairs(checkpointData) do beforeCount = beforeCount + 1 end
+        
+        scanAllCheckpoints()
+        
+        local afterCount = 0
+        for _ in pairs(checkpointData) do afterCount = afterCount + 1 end
+        
+        if afterCount > beforeCount then
             refreshGUI()
-            needsRefresh = false
         end
     end
 end)
 
-print("✅ Full Map Checkpoint Teleport Loaded")
-print("💡 Tips: Click refresh button if checkpoints are missing")
+print("✅ Static Checkpoint Teleport Loaded (TeleportCp1-700)")
+print("💡 Use search box to filter checkpoints")
