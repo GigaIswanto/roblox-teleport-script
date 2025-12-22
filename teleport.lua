@@ -1,10 +1,14 @@
+-- 🚀 Full Map Checkpoint Teleport GUI
+-- Detect all checkpoints globally
+-- Draggable, responsive, with debug info
+
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local UIS = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 
--- Reset GUI lama
+-- Reset old GUI
 local oldGui = player:FindFirstChild("CheckpointTeleportGUI")
 if oldGui then oldGui:Destroy() end
 getgenv().CheckpointTeleportLoaded = true
@@ -21,7 +25,7 @@ local function getPosition(obj)
     end
 end
 
--- Helper: filter checkpoint
+-- Check if object is official checkpoint
 local function isCheckpoint(obj)
     local name = obj.Name
     if name:match("^Checkpoint%d+$") then return true end
@@ -39,7 +43,7 @@ local function register(obj)
     end
 end
 
--- Scan workspace
+-- Scan entire Workspace
 for _, obj in ipairs(Workspace:GetDescendants()) do
     register(obj)
 end
@@ -52,7 +56,7 @@ gui.Parent = player:WaitForChild("PlayerGui")
 
 local main = Instance.new("Frame")
 main.Size = UDim2.new(0, 320, 0, 420)
-main.Position = UDim2.new(0.7, 0, 0.3, 0)
+main.Position = UDim2.new(0.7,0,0.3,0)
 main.BackgroundColor3 = Color3.fromRGB(28,28,32)
 main.Parent = gui
 Instance.new("UICorner", main).CornerRadius = UDim.new(0,14)
@@ -150,5 +154,11 @@ local function refreshGUI()
     end
 end
 
-refreshGUI()
-print("✅ Checkpoint Teleport Debug GUI Loaded")
+-- Auto refresh every second in case new checkpoint appears
+task.spawn(function()
+    while task.wait(1) do
+        refreshGUI()
+    end
+end)
+
+print("✅ Full Map Checkpoint Teleport Loaded")
