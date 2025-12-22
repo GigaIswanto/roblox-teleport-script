@@ -1,4 +1,4 @@
--- 🚀 Static 1-700 Checkpoints Teleport
+ -- 🚀 Static 1-700 Checkpoints Teleport
 
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
