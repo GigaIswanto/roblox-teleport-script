@@ -1,6 +1,6 @@
 -- 🚀 Static Checkpoint Teleport GUI
 -- TeleportCp1 sampai TeleportCp700
--- Simple and reliable
+-- Simple and reliable 
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
