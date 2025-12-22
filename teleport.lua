@@ -1,6 +1,5 @@
 -- 🚀 Global Checkpoint Teleport
 -- Detect all Checkpoint1..700 dynamically without proximity
--- Responsive & Draggable GUI 
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 
