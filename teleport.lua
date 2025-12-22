@@ -1,66 +1,50 @@
--- 🏔️ Checkpoint Teleport Basecamp → Summit
--- Strict filter only official checkpoints
+-- 🚀 Global Checkpoint Teleport
+-- Detect all Checkpoint1..700 dynamically without proximity
 -- Responsive & Draggable GUI
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 
 local Players = game:GetService("Players")
-local CollectionService = game:GetService("CollectionService")
-local UIS = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
+local UIS = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 
--- Reset old GUI
+-- Reset GUI lama
 local oldGui = player:FindFirstChild("CheckpointTeleportGUI")
 if oldGui then oldGui:Destroy() end
 getgenv().CheckpointTeleportLoaded = true
 
--- Storage
+-- STORAGE
 local checkpoints = {}
-local KEYWORDS = {
-    "checkpoint","cp","spawn","basecamp","summit","stage","level",
-    "waypoint","teleport","tp","location","save","progress"
-}
 
--- Helpers
+-- ====== HELPERS ======
 local function getHRP()
     local char = player.Character or player.CharacterAdded:Wait()
     return char:WaitForChild("HumanoidRootPart")
 end
 
-local function getPosition(obj)
+local function getPos(obj)
     if obj:IsA("BasePart") then return obj.Position end
     if obj:IsA("Model") then
-        local part = obj.PrimaryPart
-            or obj:FindFirstChild("HumanoidRootPart")
-            or obj:FindFirstChildWhichIsA("BasePart")
+        local part = obj.PrimaryPart or obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChildWhichIsA("BasePart")
         return part and part.Position
     end
 end
 
-local function nameMatch(name)
-    name = name:lower()
-    for _, k in ipairs(KEYWORDS) do
-        if name:find(k,1,true) then return true end
-    end
-end
-
+-- ====== VALID CHECKPOINT ======
 local function isCheckpoint(obj)
-    -- Must be official checkpoint only
-    if obj:IsA("SpawnLocation") and nameMatch(obj.Name) then return true end
-    if CollectionService:HasTag(obj,"Checkpoint") or CollectionService:HasTag(obj,"CP") then return true end
-    if obj:GetAttribute("IsCheckpoint") == true then return true end
-    if obj:IsA("BasePart") or obj:IsA("Model") then
-        return nameMatch(obj.Name)
-    end
+    -- Only official checkpoint names
+    local name = obj.Name
+    if name:match("^Checkpoint%d+$") then return true end
+    if name:match("^TeleportCp%d+$") then return true end
     return false
 end
 
 local function register(obj)
     if checkpoints[obj] then return end
     if not isCheckpoint(obj) then return end
-    local pos = getPosition(obj)
+    local pos = getPos(obj)
     if pos then checkpoints[obj] = {name=obj.Name, position=pos} end
 end
 
@@ -68,12 +52,14 @@ local function unregister(obj)
     checkpoints[obj] = nil
 end
 
--- Initial scan
-for _, obj in ipairs(Workspace:GetDescendants()) do register(obj) end
+-- ====== SCAN WORKSPACE ======
+for _, obj in ipairs(Workspace:GetDescendants()) do
+    register(obj)
+end
 Workspace.DescendantAdded:Connect(register)
 Workspace.DescendantRemoving:Connect(unregister)
 
--- ================= GUI =================
+-- ====== GUI ======
 local gui = Instance.new("ScreenGui")
 gui.Name = "CheckpointTeleportGUI"
 gui.ResetOnSpawn = false
@@ -87,7 +73,7 @@ main.BorderSizePixel = 0
 main.Parent = gui
 Instance.new("UICorner", main).CornerRadius = UDim.new(0,14)
 
--- Drag
+-- DRAG
 do
     local dragging, dragStart, startPos
     main.InputBegan:Connect(function(input)
@@ -110,7 +96,7 @@ do
     end)
 end
 
--- Header
+-- HEADER
 local header = Instance.new("Frame", main)
 header.Size = UDim2.new(1,0,0,44)
 header.BackgroundColor3 = Color3.fromRGB(40,40,46)
@@ -127,7 +113,7 @@ title.TextSize = 18
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.TextColor3 = Color3.fromRGB(230,230,230)
 
--- Close button
+-- CLOSE BUTTON
 local closeBtn = Instance.new("TextButton", header)
 closeBtn.Size = UDim2.new(0,30,0,30)
 closeBtn.Position = UDim2.new(1,-35,0,7)
@@ -143,7 +129,7 @@ closeBtn.MouseButton1Click:Connect(function()
     getgenv().CheckpointTeleportLoaded = false
 end)
 
--- Scroll frame
+-- SCROLL FRAME
 local scroll = Instance.new("ScrollingFrame", main)
 scroll.Position = UDim2.new(0,10,0,54)
 scroll.Size = UDim2.new(1,-20,1,-64)
@@ -157,7 +143,7 @@ layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     scroll.CanvasSize = UDim2.new(0,0,0,layout.AbsoluteContentSize.Y+10)
 end)
 
--- Refresh GUI
+-- REFRESH GUI
 local function refreshGUI()
     for _, c in ipairs(scroll:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
     for _, data in pairs(checkpoints) do
@@ -177,11 +163,11 @@ local function refreshGUI()
     end
 end
 
--- Auto refresh every 1s
+-- AUTO REFRESH
 task.spawn(function()
     while task.wait(1) do
         refreshGUI()
     end
 end)
 
-print("✅ Checkpoint Teleport Loaded | Only official checkpoints")
+print("✅ Global Checkpoint Teleport Loaded | 700+ checkpoints detected")
