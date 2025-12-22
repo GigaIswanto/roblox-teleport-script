@@ -1,6 +1,6 @@
--- ✅ Dynamic Checkpoint Teleport | Final Version
--- Responsive, Draggable, Auto-Reset + Close Button
--- GitHub Raw Ready 
+-- 🏔️ Checkpoint Teleport Basecamp → Summit
+-- Strict filter only official checkpoints
+-- Responsive & Draggable GUI
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -11,21 +11,19 @@ local Workspace = game:GetService("Workspace")
 
 local player = Players.LocalPlayer
 
--- ================= RESET GUI =================
+-- Reset old GUI
 local oldGui = player:FindFirstChild("CheckpointTeleportGUI")
 if oldGui then oldGui:Destroy() end
-
-if getgenv().CheckpointTeleportLoaded then
-    -- reset listener jika ada
-    getgenv().CheckpointTeleportLoaded = false
-end
 getgenv().CheckpointTeleportLoaded = true
 
--- ================= STORAGE =================
+-- Storage
 local checkpoints = {}
-local KEYWORDS = {"checkpoint","check","cp","spawn","save","respawn","stage","level"}
+local KEYWORDS = {
+    "checkpoint","cp","spawn","basecamp","summit","stage","level",
+    "waypoint","teleport","tp","location","save","progress"
+}
 
--- ================= HELPERS =================
+-- Helpers
 local function getHRP()
     local char = player.Character or player.CharacterAdded:Wait()
     return char:WaitForChild("HumanoidRootPart")
@@ -48,21 +46,14 @@ local function nameMatch(name)
     end
 end
 
-local function hasVisualMarker(obj)
-    return obj:FindFirstChildWhichIsA("BillboardGui", true)
-        or obj:FindFirstChildWhichIsA("ProximityPrompt", true)
-end
-
 local function isCheckpoint(obj)
-    if obj:IsA("SpawnLocation") then return true end
+    -- Must be official checkpoint only
+    if obj:IsA("SpawnLocation") and nameMatch(obj.Name) then return true end
     if CollectionService:HasTag(obj,"Checkpoint") or CollectionService:HasTag(obj,"CP") then return true end
     if obj:GetAttribute("IsCheckpoint") == true then return true end
-    if hasVisualMarker(obj) then return true end
-
-    -- fallback by name + size
-    if obj:IsA("BasePart") and nameMatch(obj.Name) and obj.Size.Magnitude < 100 then return true end
-    if obj:IsA("Model") and nameMatch(obj.Name) then return true end
-
+    if obj:IsA("BasePart") or obj:IsA("Model") then
+        return nameMatch(obj.Name)
+    end
     return false
 end
 
@@ -77,7 +68,7 @@ local function unregister(obj)
     checkpoints[obj] = nil
 end
 
--- INITIAL SCAN
+-- Initial scan
 for _, obj in ipairs(Workspace:GetDescendants()) do register(obj) end
 Workspace.DescendantAdded:Connect(register)
 Workspace.DescendantRemoving:Connect(unregister)
@@ -96,7 +87,7 @@ main.BorderSizePixel = 0
 main.Parent = gui
 Instance.new("UICorner", main).CornerRadius = UDim.new(0,14)
 
--- DRAG
+-- Drag
 do
     local dragging, dragStart, startPos
     main.InputBegan:Connect(function(input)
@@ -119,7 +110,7 @@ do
     end)
 end
 
--- HEADER
+-- Header
 local header = Instance.new("Frame", main)
 header.Size = UDim2.new(1,0,0,44)
 header.BackgroundColor3 = Color3.fromRGB(40,40,46)
@@ -130,13 +121,13 @@ local title = Instance.new("TextLabel", header)
 title.Size = UDim2.new(1,-50,1,0)
 title.Position = UDim2.new(0,10,0,0)
 title.BackgroundTransparency = 1
-title.Text = "📍 Checkpoint Teleport"
+title.Text = "🏔️ Checkpoints"
 title.Font = Enum.Font.GothamBold
 title.TextSize = 18
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.TextColor3 = Color3.fromRGB(230,230,230)
 
--- CLOSE BUTTON
+-- Close button
 local closeBtn = Instance.new("TextButton", header)
 closeBtn.Size = UDim2.new(0,30,0,30)
 closeBtn.Position = UDim2.new(1,-35,0,7)
@@ -152,7 +143,7 @@ closeBtn.MouseButton1Click:Connect(function()
     getgenv().CheckpointTeleportLoaded = false
 end)
 
--- SCROLL FRAME
+-- Scroll frame
 local scroll = Instance.new("ScrollingFrame", main)
 scroll.Position = UDim2.new(0,10,0,54)
 scroll.Size = UDim2.new(1,-20,1,-64)
@@ -166,7 +157,7 @@ layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     scroll.CanvasSize = UDim2.new(0,0,0,layout.AbsoluteContentSize.Y+10)
 end)
 
--- REFRESH GUI
+-- Refresh GUI
 local function refreshGUI()
     for _, c in ipairs(scroll:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
     for _, data in pairs(checkpoints) do
@@ -186,11 +177,11 @@ local function refreshGUI()
     end
 end
 
--- AUTO REFRESH EVERY 1s
+-- Auto refresh every 1s
 task.spawn(function()
     while task.wait(1) do
         refreshGUI()
     end
 end)
 
-print("✅ Checkpoint Teleport Loaded | GUI reset enabled")
+print("✅ Checkpoint Teleport Loaded | Only official checkpoints")
