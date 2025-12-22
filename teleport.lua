@@ -1,6 +1,4 @@
 -- Roblox Checkpoint Teleport Script untuk Delta Executor
--- Script ini secara dinamis mencari semua checkpoint di map dan membuat GUI scrollable
--- Optimized untuk performa dan reliability
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
