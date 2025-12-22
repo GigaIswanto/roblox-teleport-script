@@ -1,6 +1,6 @@
 -- ✅ Dynamic Checkpoint Teleport | Final Version
 -- Responsive, Draggable, Auto-Reset + Close Button
--- GitHub Raw Ready
+-- GitHub Raw Ready 
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 
