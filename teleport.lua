@@ -1,5 +1,4 @@
 -- 🚀 Static Checkpoint Teleport GUI
-
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local UIS = game:GetService("UserInputService")
