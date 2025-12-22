@@ -20,72 +20,175 @@ local function getPos(obj)
     return nil
 end
 
+local function isValidCheckpoint(obj)
+    -- Skip common non-checkpoint objects
+    local skipNames = {"light", "lamp", "part", "basepart", "mesh", "decal", "texture", "sound", "script", "localscript", "module"}
+    local nameLower = obj.Name:lower()
+    for _, skip in ipairs(skipNames) do
+        if nameLower:find(skip, 1, true) and not nameLower:find("checkpoint", 1, true) and not nameLower:find("basecamp", 1, true) then
+            return false
+        end
+    end
+    return true
+end
+
 local function findCP()
     local cp, f = {}, {}
-    local kw = {"checkpoint", "cp", "spawn", "teleport", "tp", "waypoint", "location", "point", "spot", "base", "camp", "station", "save", "respawn"}
+    -- More specific keywords for checkpoint and basecamp
+    local checkpointKeywords = {"checkpoint", "cp", "savepoint", "save", "respawnpoint", "respawn"}
+    local basecampKeywords = {"basecamp", "base", "camp", "spawnbox", "spawn", "spawnpoint"}
     
-    -- Keyword-based detection
+    -- Checkpoint detection
     for _, obj in ipairs(Workspace:GetDescendants()) do
+        if not isValidCheckpoint(obj) then continue end
+        
         local n = obj.Name:lower()
-        local isCP = false
-        for _, k in ipairs(kw) do
+        local isCheckpoint = false
+        local isBasecamp = false
+        
+        -- Check for checkpoint keywords
+        for _, k in ipairs(checkpointKeywords) do
             if n:find(k, 1, true) then
-                isCP = true
+                isCheckpoint = true
                 break
             end
         end
         
-        if isCP and (obj:IsA("BasePart") or obj:IsA("Model")) then
+        -- Check for basecamp keywords
+        for _, k in ipairs(basecampKeywords) do
+            if n:find(k, 1, true) then
+                isBasecamp = true
+                break
+            end
+        end
+        
+        -- Process checkpoint
+        if isCheckpoint and (obj:IsA("BasePart") or obj:IsA("Model")) then
             local pos = getPos(obj)
             if pos then
                 local key = obj.Name .. tostring(pos.X) .. tostring(pos.Y) .. tostring(pos.Z)
                 if not f[key] then
                     f[key] = true
-                    table.insert(cp, {name = obj.Name, position = pos, object = obj})
+                    table.insert(cp, {name = obj.Name, position = pos, object = obj, type = "Checkpoint"})
                 end
             end
         end
         
-        -- BillboardGui detection
+        -- Process basecamp
+        if isBasecamp and (obj:IsA("BasePart") or obj:IsA("Model")) then
+            local pos = getPos(obj)
+            if pos then
+                local key = obj.Name .. tostring(pos.X) .. tostring(pos.Y) .. tostring(pos.Z)
+                if not f[key] then
+                    f[key] = true
+                    table.insert(cp, {name = obj.Name, position = pos, object = obj, type = "Basecamp"})
+                end
+            end
+        end
+        
+        -- Check for models that might contain checkpoint/basecamp parts
+        if obj:IsA("Model") then
+            local modelName = obj.Name:lower()
+            local hasCheckpointKeyword = false
+            local hasBasecampKeyword = false
+            
+            for _, k in ipairs(checkpointKeywords) do
+                if modelName:find(k, 1, true) then
+                    hasCheckpointKeyword = true
+                    break
+                end
+            end
+            
+            for _, k in ipairs(basecampKeywords) do
+                if modelName:find(k, 1, true) then
+                    hasBasecampKeyword = true
+                    break
+                end
+            end
+            
+            if hasCheckpointKeyword or hasBasecampKeyword then
+                local pos = getPos(obj)
+                if pos then
+                    local key = obj.Name .. tostring(pos.X) .. tostring(pos.Y) .. tostring(pos.Z)
+                    if not f[key] then
+                        f[key] = true
+                        local cpType = hasCheckpointKeyword and "Checkpoint" or "Basecamp"
+                        table.insert(cp, {name = obj.Name, position = pos, object = obj, type = cpType})
+                    end
+                end
+            end
+        end
+        
+        -- BillboardGui detection (only if name suggests checkpoint/basecamp)
         if obj:IsA("BasePart") and obj:FindFirstChildOfClass("BillboardGui") then
-            local pos = getPos(obj)
-            if pos then
-                local key = obj.Name .. tostring(pos.X) .. tostring(pos.Y) .. tostring(pos.Z)
-                if not f[key] then
-                    f[key] = true
-                    table.insert(cp, {name = obj.Name, position = pos, object = obj})
+            local partName = obj.Name:lower()
+            local parentName = obj.Parent and obj.Parent.Name:lower() or ""
+            local isRelevant = false
+            
+            for _, k in ipairs(checkpointKeywords) do
+                if partName:find(k, 1, true) or parentName:find(k, 1, true) then
+                    isRelevant = true
+                    break
+                end
+            end
+            
+            for _, k in ipairs(basecampKeywords) do
+                if partName:find(k, 1, true) or parentName:find(k, 1, true) then
+                    isRelevant = true
+                    break
+                end
+            end
+            
+            if isRelevant then
+                local pos = getPos(obj)
+                if pos then
+                    local key = obj.Name .. tostring(pos.X) .. tostring(pos.Y) .. tostring(pos.Z)
+                    if not f[key] then
+                        f[key] = true
+                        local cpType = (partName:find("basecamp", 1, true) or parentName:find("basecamp", 1, true) or partName:find("base", 1, true) or parentName:find("base", 1, true) or partName:find("camp", 1, true) or parentName:find("camp", 1, true) or partName:find("spawn", 1, true) or parentName:find("spawn", 1, true)) and "Basecamp" or "Checkpoint"
+                        table.insert(cp, {name = obj.Name, position = pos, object = obj, type = cpType})
+                    end
                 end
             end
         end
         
-        -- SurfaceGui detection
-        if obj:IsA("BasePart") and obj:FindFirstChildOfClass("SurfaceGui") then
-            local pos = getPos(obj)
-            if pos then
-                local key = obj.Name .. tostring(pos.X) .. tostring(pos.Y) .. tostring(pos.Z)
-                if not f[key] then
-                    f[key] = true
-                    table.insert(cp, {name = obj.Name, position = pos, object = obj})
-                end
-            end
-        end
-        
-        -- ProximityPrompt detection
+        -- ProximityPrompt detection (only if name suggests checkpoint/basecamp)
         if obj:IsA("ProximityPrompt") and obj.Parent then
-            local pos = getPos(obj.Parent)
-            if pos then
-                local key = obj.Parent.Name .. tostring(pos.X) .. tostring(pos.Y) .. tostring(pos.Z)
-                if not f[key] then
-                    f[key] = true
-                    local name = obj.ActionText ~= "" and obj.ActionText or obj.Parent.Name
-                    table.insert(cp, {name = name, position = pos, object = obj.Parent})
+            local promptName = obj.ActionText:lower()
+            local parentName = obj.Parent.Name:lower()
+            local isRelevant = false
+            
+            for _, k in ipairs(checkpointKeywords) do
+                if promptName:find(k, 1, true) or parentName:find(k, 1, true) then
+                    isRelevant = true
+                    break
+                end
+            end
+            
+            for _, k in ipairs(basecampKeywords) do
+                if promptName:find(k, 1, true) or parentName:find(k, 1, true) then
+                    isRelevant = true
+                    break
+                end
+            end
+            
+            if isRelevant then
+                local pos = getPos(obj.Parent)
+                if pos then
+                    local key = obj.Parent.Name .. tostring(pos.X) .. tostring(pos.Y) .. tostring(pos.Z)
+                    if not f[key] then
+                        f[key] = true
+                        local name = obj.ActionText ~= "" and obj.ActionText or obj.Parent.Name
+                        local cpType = (parentName:find("basecamp", 1, true) or parentName:find("base", 1, true) or parentName:find("camp", 1, true) or parentName:find("spawn", 1, true)) and "Basecamp" or "Checkpoint"
+                        table.insert(cp, {name = name, position = pos, object = obj.Parent, type = cpType})
+                    end
                 end
             end
         end
     end
     
     -- CollectionService tags detection
-    local tags = {"Checkpoint", "Spawn", "Teleport", "Waypoint", "Location", "SavePoint"}
+    local tags = {"Checkpoint", "Basecamp", "Spawn", "SavePoint"}
     for _, tag in ipairs(tags) do
         local success, tagged = pcall(function()
             return CollectionService:GetTagged(tag)
@@ -97,7 +200,8 @@ local function findCP()
                     local key = obj.Name .. tostring(pos.X) .. tostring(pos.Y) .. tostring(pos.Z)
                     if not f[key] then
                         f[key] = true
-                        table.insert(cp, {name = obj.Name, position = pos, object = obj})
+                        local cpType = (tag == "Basecamp" or tag == "Spawn") and "Basecamp" or "Checkpoint"
+                        table.insert(cp, {name = obj.Name, position = pos, object = obj, type = cpType})
                     end
                 end
             end
@@ -110,7 +214,7 @@ end
 local locs = findCP()
 if #locs == 0 then
     local s = Workspace:FindFirstChild("SpawnLocation")
-    table.insert(locs, {name = "Spawn", position = s and s.Position or Vector3.new(0, 5, 0), object = s})
+    table.insert(locs, {name = "Spawn", position = s and s.Position or Vector3.new(0, 5, 0), object = s, type = "Basecamp"})
 end
 
 local function teleport(name, pos)
@@ -143,8 +247,8 @@ sg.Parent = pg
 
 local mf = Instance.new("Frame")
 mf.Name = "MainFrame"
-mf.Size = UDim2.new(0, 400, 0, 600)
-mf.Position = UDim2.new(1, -420, 0.5, -300)
+mf.Size = UDim2.new(0, 450, 0, 650)
+mf.Position = UDim2.new(1, -470, 0.5, -325)
 mf.AnchorPoint = Vector2.new(0, 0.5)
 mf.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
 mf.BorderSizePixel = 0
@@ -185,7 +289,7 @@ tt.Name = "Title"
 tt.Size = UDim2.new(1, -100, 1, 0)
 tt.Position = UDim2.new(0, 20, 0, 0)
 tt.BackgroundTransparency = 1
-tt.Text = "Checkpoint Teleport (" .. #locs .. ")"
+tt.Text = "Teleport (" .. #locs .. ")"
 tt.TextColor3 = Color3.fromRGB(255, 255, 255)
 tt.TextSize = 20
 tt.Font = Enum.Font.GothamBold
@@ -219,15 +323,71 @@ rb.MouseLeave:Connect(function()
     tween:Play()
 end)
 
+-- Filter buttons
+local filterFrame = Instance.new("Frame")
+filterFrame.Name = "FilterFrame"
+filterFrame.Size = UDim2.new(1, -40, 0, 35)
+filterFrame.Position = UDim2.new(0, 20, 0, 70)
+filterFrame.BackgroundTransparency = 1
+filterFrame.Parent = mf
+
+local allBtn = Instance.new("TextButton")
+allBtn.Name = "AllButton"
+allBtn.Size = UDim2.new(0, 80, 1, 0)
+allBtn.Position = UDim2.new(0, 0, 0, 0)
+allBtn.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
+allBtn.BorderSizePixel = 0
+allBtn.Text = "All"
+allBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+allBtn.TextSize = 14
+allBtn.Font = Enum.Font.GothamBold
+allBtn.Parent = filterFrame
+
+local allCorner = Instance.new("UICorner")
+allCorner.CornerRadius = UDim.new(0, 6)
+allCorner.Parent = allBtn
+
+local cpBtn = Instance.new("TextButton")
+cpBtn.Name = "CPButton"
+cpBtn.Size = UDim2.new(0, 100, 1, 0)
+cpBtn.Position = UDim2.new(0, 90, 0, 0)
+cpBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+cpBtn.BorderSizePixel = 0
+cpBtn.Text = "Checkpoint"
+cpBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+cpBtn.TextSize = 14
+cpBtn.Font = Enum.Font.GothamBold
+cpBtn.Parent = filterFrame
+
+local cpCorner = Instance.new("UICorner")
+cpCorner.CornerRadius = UDim.new(0, 6)
+cpCorner.Parent = cpBtn
+
+local bcBtn = Instance.new("TextButton")
+bcBtn.Name = "BCButton"
+bcBtn.Size = UDim2.new(0, 100, 1, 0)
+bcBtn.Position = UDim2.new(0, 200, 0, 0)
+bcBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+bcBtn.BorderSizePixel = 0
+bcBtn.Text = "Basecamp"
+bcBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+bcBtn.TextSize = 14
+bcBtn.Font = Enum.Font.GothamBold
+bcBtn.Parent = filterFrame
+
+local bcCorner = Instance.new("UICorner")
+bcCorner.CornerRadius = UDim.new(0, 6)
+bcCorner.Parent = bcBtn
+
 -- Search Box
 local searchBox = Instance.new("TextBox")
 searchBox.Name = "SearchBox"
 searchBox.Size = UDim2.new(1, -40, 0, 40)
-searchBox.Position = UDim2.new(0, 20, 0, 70)
+searchBox.Position = UDim2.new(0, 20, 0, 115)
 searchBox.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
 searchBox.BorderSizePixel = 0
-searchBox.Text = "Search checkpoint..."
-searchBox.PlaceholderText = "Search checkpoint..."
+searchBox.Text = ""
+searchBox.PlaceholderText = "Search checkpoint/basecamp..."
 searchBox.TextColor3 = Color3.fromRGB(200, 200, 200)
 searchBox.PlaceholderColor3 = Color3.fromRGB(120, 120, 120)
 searchBox.TextSize = 14
@@ -248,8 +408,8 @@ searchCorner.Parent = searchBox
 -- Scrolling Frame
 local sf = Instance.new("ScrollingFrame")
 sf.Name = "ScrollFrame"
-sf.Size = UDim2.new(1, -40, 1, -130)
-sf.Position = UDim2.new(0, 20, 0, 120)
+sf.Size = UDim2.new(1, -40, 1, -170)
+sf.Position = UDim2.new(0, 20, 0, 165)
 sf.BackgroundTransparency = 1
 sf.BorderSizePixel = 0
 sf.ScrollBarThickness = 6
@@ -272,7 +432,9 @@ ul:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     sf.CanvasSize = UDim2.new(0, 0, 0, ul.AbsoluteContentSize.Y + 10)
 end)
 
-local function createButtons(filterText)
+local currentFilter = "All"
+
+local function createButtons(filterText, filterType)
     -- Clear existing buttons
     for _, c in ipairs(cf:GetChildren()) do
         if c:IsA("TextButton") then
@@ -288,17 +450,20 @@ local function createButtons(filterText)
     -- Filter and create buttons
     local count = 0
     for _, loc in ipairs(locs) do
-        if filterText == "" or loc.name:lower():find(filterText:lower(), 1, true) then
+        -- Text filter
+        local textMatch = filterText == "" or loc.name:lower():find(filterText:lower(), 1, true)
+        
+        -- Type filter
+        local typeMatch = filterType == "All" or loc.type == filterType
+        
+        if textMatch and typeMatch then
             count = count + 1
             local btn = Instance.new("TextButton")
             btn.Name = loc.name
-            btn.Size = UDim2.new(1, 0, 0, 50)
+            btn.Size = UDim2.new(1, 0, 0, 55)
             btn.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
             btn.BorderSizePixel = 0
-            btn.Text = loc.name
-            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-            btn.TextSize = 16
-            btn.Font = Enum.Font.Gotham
+            btn.Text = ""
             btn.AutoButtonColor = false
             btn.Parent = cf
             
@@ -310,6 +475,30 @@ local function createButtons(filterText)
             btnPadding.PaddingLeft = UDim.new(0, 15)
             btnPadding.PaddingRight = UDim.new(0, 15)
             btnPadding.Parent = btn
+            
+            -- Name label
+            local nameLabel = Instance.new("TextLabel")
+            nameLabel.Size = UDim2.new(1, -80, 0.6, 0)
+            nameLabel.Position = UDim2.new(0, 0, 0, 0)
+            nameLabel.BackgroundTransparency = 1
+            nameLabel.Text = loc.name
+            nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            nameLabel.TextSize = 16
+            nameLabel.Font = Enum.Font.GothamBold
+            nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+            nameLabel.Parent = btn
+            
+            -- Type label
+            local typeLabel = Instance.new("TextLabel")
+            typeLabel.Size = UDim2.new(1, -80, 0.4, 0)
+            typeLabel.Position = UDim2.new(0, 0, 0.6, 0)
+            typeLabel.BackgroundTransparency = 1
+            typeLabel.Text = loc.type
+            typeLabel.TextColor3 = loc.type == "Basecamp" and Color3.fromRGB(0, 255, 127) or Color3.fromRGB(100, 200, 255)
+            typeLabel.TextSize = 12
+            typeLabel.Font = Enum.Font.Gotham
+            typeLabel.TextXAlignment = Enum.TextXAlignment.Left
+            typeLabel.Parent = btn
             
             -- Hover effects
             btn.MouseEnter:Connect(function()
@@ -330,25 +519,51 @@ local function createButtons(filterText)
     end
     
     -- Update title
-    tt.Text = "Checkpoint Teleport (" .. count .. ")"
+    tt.Text = "Teleport (" .. count .. ")"
 end
 
+-- Filter button functionality
+local function updateFilterButtons(activeBtn)
+    allBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+    cpBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+    bcBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+    activeBtn.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
+end
+
+allBtn.MouseButton1Click:Connect(function()
+    currentFilter = "All"
+    updateFilterButtons(allBtn)
+    createButtons(searchBox.Text, currentFilter)
+end)
+
+cpBtn.MouseButton1Click:Connect(function()
+    currentFilter = "Checkpoint"
+    updateFilterButtons(cpBtn)
+    createButtons(searchBox.Text, currentFilter)
+end)
+
+bcBtn.MouseButton1Click:Connect(function()
+    currentFilter = "Basecamp"
+    updateFilterButtons(bcBtn)
+    createButtons(searchBox.Text, currentFilter)
+end)
+
 -- Initial button creation
-createButtons("")
+createButtons("", currentFilter)
 
 -- Refresh button functionality
 rb.MouseButton1Click:Connect(function()
     locs = findCP()
     if #locs == 0 then
         local s = Workspace:FindFirstChild("SpawnLocation")
-        table.insert(locs, {name = "Spawn", position = s and s.Position or Vector3.new(0, 5, 0), object = s})
+        table.insert(locs, {name = "Spawn", position = s and s.Position or Vector3.new(0, 5, 0), object = s, type = "Basecamp"})
     end
-    createButtons(searchBox.Text)
+    createButtons(searchBox.Text, currentFilter)
 end)
 
 -- Search functionality
 searchBox:GetPropertyChangedSignal("Text"):Connect(function()
-    createButtons(searchBox.Text)
+    createButtons(searchBox.Text, currentFilter)
 end)
 
 -- Character respawn handling
