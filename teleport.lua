@@ -1,5 +1,5 @@
 -- 🚀 Static 1-700 Checkpoints Teleport
--- Responsive & Draggable GUI
+-- Responsive & Draggable GUI 
 
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
