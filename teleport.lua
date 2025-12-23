@@ -1,17 +1,32 @@
 -- Roblox Checkpoint Teleport Script untuk Delta Executor
+-- Script ini mendeteksi checkpoint di sekitar player dan mengaktifkannya saat dilewati
+-- Checkpoint yang sudah dilewati disimpan secara persistent dan bisa digunakan untuk teleport
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local DataStoreService = game:GetService("DataStoreService")
 
 local player = Players.LocalPlayer
 local character = player.Character
 local humanoidRootPart = character and character:WaitForChild("HumanoidRootPart")
 
--- Cache untuk checkpoint yang sudah ditemukan
-local checkpointCache = {}
-local checkpointList = {}
+-- Cache untuk semua checkpoint di map
+local allCheckpoints = {}
+-- Checkpoint yang sudah dilewati (aktif)
+local unlockedCheckpoints = {}
+-- DataStore untuk persistent storage
+local dataStore = nil
+local dataStoreKey = "CheckpointData_" .. player.UserId
+
+-- Konfigurasi
+local CONFIG = {
+    DetectionRadius = 15, -- Radius deteksi checkpoint (studs)
+    TouchRadius = 8, -- Radius untuk mengaktifkan checkpoint (studs)
+    SaveInterval = 5 -- Interval save ke DataStore (detik)
+}
 
 -- Konfigurasi UI
 local UI_CONFIG = {
@@ -40,6 +55,12 @@ local UI_CONFIG = {
     }
 }
 
+-- Variabel untuk GUI
+local screenGui = nil
+local scrollingFrame = nil
+local titleText = nil
+local buttonCache = {}
+
 -- Fungsi untuk mendapatkan CFrame dari objek checkpoint
 local function getCheckpointCFrame(obj)
     if obj:IsA("BasePart") then
@@ -58,15 +79,27 @@ local function getCheckpointCFrame(obj)
     return nil
 end
 
--- Fungsi untuk scan semua checkpoint di workspace secara optimal
+-- Fungsi untuk mendapatkan part dari checkpoint
+local function getCheckpointPart(obj)
+    if obj:IsA("BasePart") then
+        return obj
+    elseif obj:IsA("Model") then
+        return obj.PrimaryPart or 
+               obj:FindFirstChild("HumanoidRootPart") or
+               obj:FindFirstChild("RootPart") or
+               obj:FindFirstChildOfClass("BasePart")
+    end
+    return nil
+end
+
+-- Fungsi untuk scan semua checkpoint di workspace
 local function scanAllCheckpoints()
-    checkpointCache = {}
-    checkpointList = {}
+    allCheckpoints = {}
     
     print("Scanning checkpoints di map...")
     local startTime = tick()
     
-    -- Pattern untuk nama checkpoint yang umum digunakan
+    -- Pattern untuk nama checkpoint
     local checkpointPatterns = {
         "^CheckpointCp(%d+)$",
         "^Cp(%d+)$",
@@ -85,22 +118,20 @@ local function scanAllCheckpoints()
                 return tonumber(num)
             end
         end
-        -- Fallback: cari semua angka di nama
         local numbers = {}
         for num in name:gmatch("%d+") do
             table.insert(numbers, tonumber(num))
         end
-        return numbers[1] -- Ambil angka pertama
+        return numbers[1]
     end
     
-    -- Scan semua descendants sekali
+    -- Scan semua descendants
     local allDescendants = Workspace:GetDescendants()
     
     for _, obj in ipairs(allDescendants) do
         local name = obj.Name
         local num = extractNumber(name)
         
-        -- Cek apakah ini checkpoint berdasarkan pattern atau lokasi
         local isCheckpoint = false
         
         if num then
@@ -123,30 +154,25 @@ local function scanAllCheckpoints()
         
         if isCheckpoint then
             local cframe = getCheckpointCFrame(obj)
-            if cframe then
-                local checkpointName = name
+            local part = getCheckpointPart(obj)
+            
+            if cframe and part then
                 local checkpointNum = num or 0
                 
-                -- Simpan ke cache dengan nama asli sebagai key
-                checkpointCache[checkpointName] = {
+                table.insert(allCheckpoints, {
+                    Name = name,
+                    Number = checkpointNum,
                     CFrame = cframe,
-                    Name = checkpointName,
-                    Number = checkpointNum,
-                    Object = obj
-                }
-                
-                -- Tambahkan ke list untuk sorting
-                table.insert(checkpointList, {
-                    Name = checkpointName,
-                    Number = checkpointNum,
-                    CFrame = cframe
+                    Part = part,
+                    Object = obj,
+                    Unlocked = false
                 })
             end
         end
     end
     
     -- Sort berdasarkan nomor
-    table.sort(checkpointList, function(a, b)
+    table.sort(allCheckpoints, function(a, b)
         if a.Number == b.Number then
             return a.Name < b.Name
         end
@@ -154,17 +180,118 @@ local function scanAllCheckpoints()
     end)
     
     local endTime = tick()
-    local foundCount = #checkpointList
+    local foundCount = #allCheckpoints
     
     print(string.format("Found %d checkpoints in %.2f seconds", foundCount, endTime - startTime))
     
     return foundCount > 0
 end
 
--- Fungsi untuk teleport ke checkpoint dengan CFrame yang sudah di-cache
+-- Fungsi untuk load data dari DataStore
+local function loadCheckpointData()
+    local success, data = pcall(function()
+        if dataStore then
+            return dataStore:GetAsync(dataStoreKey)
+        end
+        return nil
+    end)
+    
+    if success and data and type(data) == "table" then
+        unlockedCheckpoints = data
+        print("✓ Loaded " .. #unlockedCheckpoints .. " unlocked checkpoints from DataStore")
+        
+        -- Update status checkpoint
+        for _, checkpoint in ipairs(allCheckpoints) do
+            for _, unlockedName in ipairs(unlockedCheckpoints) do
+                if checkpoint.Name == unlockedName then
+                    checkpoint.Unlocked = true
+                    break
+                end
+            end
+        end
+    else
+        unlockedCheckpoints = {}
+        print("No saved checkpoint data found")
+    end
+end
+
+-- Fungsi untuk save data ke DataStore
+local function saveCheckpointData()
+    local success, err = pcall(function()
+        if dataStore then
+            dataStore:SetAsync(dataStoreKey, unlockedCheckpoints)
+            return true
+        end
+        return false
+    end)
+    
+    if success then
+        print("✓ Saved " .. #unlockedCheckpoints .. " unlocked checkpoints to DataStore")
+    else
+        warn("Failed to save checkpoint data: " .. tostring(err))
+    end
+end
+
+-- Fungsi untuk unlock checkpoint
+local function unlockCheckpoint(checkpointName)
+    -- Cek apakah sudah unlocked
+    for _, name in ipairs(unlockedCheckpoints) do
+        if name == checkpointName then
+            return false -- Sudah unlocked
+        end
+    end
+    
+    -- Tambahkan ke list unlocked
+    table.insert(unlockedCheckpoints, checkpointName)
+    
+    -- Update status checkpoint
+    for _, checkpoint in ipairs(allCheckpoints) do
+        if checkpoint.Name == checkpointName then
+            checkpoint.Unlocked = true
+            print("✓ Unlocked checkpoint: " .. checkpointName)
+            break
+        end
+    end
+    
+    -- Save ke DataStore
+    saveCheckpointData()
+    
+    -- Update UI
+    updateGUI()
+    
+    return true
+end
+
+-- Fungsi untuk deteksi checkpoint di sekitar player
+local function detectNearbyCheckpoints()
+    if not humanoidRootPart or not humanoidRootPart.Parent then
+        return
+    end
+    
+    local playerPosition = humanoidRootPart.Position
+    
+    for _, checkpoint in ipairs(allCheckpoints) do
+        if checkpoint.Part and checkpoint.Part.Parent then
+            local checkpointPosition = checkpoint.CFrame.Position
+            local distance = (playerPosition - checkpointPosition).Magnitude
+            
+            -- Jika dalam radius touch, unlock checkpoint
+            if distance <= CONFIG.TouchRadius and not checkpoint.Unlocked then
+                unlockCheckpoint(checkpoint.Name)
+            end
+        end
+    end
+end
+
+-- Fungsi untuk teleport ke checkpoint
 local function teleportToCheckpoint(checkpointData)
     if not checkpointData or not checkpointData.CFrame then
         warn("Checkpoint data tidak valid!")
+        return false
+    end
+    
+    if not checkpointData.Unlocked then
+        warn("Checkpoint belum di-unlock!")
         return false
     end
     
@@ -183,11 +310,11 @@ local function teleportToCheckpoint(checkpointData)
         return false
     end
     
-    -- Teleport dengan offset ke atas untuk menghindari stuck di ground
+    -- Teleport dengan offset
     local targetCFrame = checkpointData.CFrame
     local offset = Vector3.new(0, 5, 0)
     
-    -- Cek apakah ada part di bawah untuk menentukan offset yang tepat
+    -- Raycast untuk cek ground
     local raycastParams = RaycastParams.new()
     raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
     raycastParams.FilterDescendantsInstances = {character}
@@ -204,7 +331,113 @@ local function teleportToCheckpoint(checkpointData)
     return true
 end
 
--- Fungsi untuk membuat UI dengan checkpoint yang ditemukan
+-- Fungsi untuk update GUI
+local function updateGUI()
+    if not screenGui or not scrollingFrame then
+        return
+    end
+    
+    -- Clear existing buttons
+    for _, button in pairs(buttonCache) do
+        if button and button.Parent then
+            button:Destroy()
+        end
+    end
+    buttonCache = {}
+    
+    -- Get unlocked checkpoints sorted
+    local unlockedList = {}
+    for _, checkpoint in ipairs(allCheckpoints) do
+        if checkpoint.Unlocked then
+            table.insert(unlockedList, checkpoint)
+        end
+    end
+    
+    -- Sort
+    table.sort(unlockedList, function(a, b)
+        if a.Number == b.Number then
+            return a.Name < b.Name
+        end
+        return a.Number < b.Number
+    end)
+    
+    -- Update title
+    if titleText then
+        titleText.Text = string.format("Unlocked Checkpoints (%d)", #unlockedList)
+    end
+    
+    -- Create buttons untuk unlocked checkpoints
+    for i, checkpointData in ipairs(unlockedList) do
+        local button = Instance.new("TextButton")
+        button.Name = "Cp_" .. i
+        button.LayoutOrder = i
+        button.Size = UI_CONFIG.Button.Size
+        button.BackgroundColor3 = UI_CONFIG.Button.BackgroundColor
+        button.BorderSizePixel = 0
+        button.Text = checkpointData.Name
+        button.TextColor3 = UI_CONFIG.Button.TextColor
+        button.TextSize = 15
+        button.Font = Enum.Font.Gotham
+        button.TextXAlignment = Enum.TextXAlignment.Left
+        button.Parent = scrollingFrame
+        
+        -- Padding
+        local textPadding = Instance.new("UIPadding")
+        textPadding.PaddingLeft = UDim.new(0, 12)
+        textPadding.Parent = button
+        
+        -- Rounded corners
+        local buttonCorner = Instance.new("UICorner")
+        buttonCorner.CornerRadius = UDim.new(0, 8)
+        buttonCorner.Parent = button
+        
+        -- Hover effect
+        local originalColor = button.BackgroundColor3
+        button.MouseEnter:Connect(function()
+            TweenService:Create(
+                button,
+                TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                {BackgroundColor3 = UI_CONFIG.Button.HoverColor}
+            ):Play()
+        end)
+        
+        button.MouseLeave:Connect(function()
+            TweenService:Create(
+                button,
+                TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                {BackgroundColor3 = originalColor}
+            ):Play()
+        end)
+        
+        -- Click event
+        button.MouseButton1Click:Connect(function()
+            local success = teleportToCheckpoint(checkpointData)
+            
+            if success then
+                local originalText = button.Text
+                button.Text = "✓ " .. originalText
+                TweenService:Create(
+                    button,
+                    TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                    {BackgroundColor3 = UI_CONFIG.Button.ActiveColor}
+                ):Play()
+                
+                wait(0.6)
+                
+                button.Text = originalText
+                TweenService:Create(
+                    button,
+                    TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                    {BackgroundColor3 = originalColor}
+                ):Play()
+            end
+        end)
+        
+        buttonCache[i] = button
+    end
+end
+
+-- Fungsi untuk membuat UI
 local function createGUI()
     local success, err = pcall(function()
         local playerGui = player:WaitForChild("PlayerGui")
@@ -215,14 +448,8 @@ local function createGUI()
             oldGui:Destroy()
         end
         
-        -- Scan checkpoint terlebih dahulu
-        if not scanAllCheckpoints() then
-            warn("Tidak ada checkpoint ditemukan di map!")
-            return nil
-        end
-        
         -- Membuat ScreenGui
-        local screenGui = Instance.new("ScreenGui")
+        screenGui = Instance.new("ScreenGui")
         screenGui.Name = "CheckpointTeleportGUI"
         screenGui.ResetOnSpawn = false
         screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -272,12 +499,12 @@ local function createGUI()
         titleCorner.Parent = titleBar
         
         -- Title Text
-        local titleText = Instance.new("TextLabel")
+        titleText = Instance.new("TextLabel")
         titleText.Name = "TitleText"
         titleText.Size = UDim2.new(1, -100, 1, 0)
         titleText.Position = UDim2.new(0, 15, 0, 0)
         titleText.BackgroundTransparency = 1
-        titleText.Text = string.format("Checkpoints (%d)", #checkpointList)
+        titleText.Text = "Unlocked Checkpoints (0)"
         titleText.TextColor3 = Color3.fromRGB(255, 255, 255)
         titleText.TextSize = 18
         titleText.Font = Enum.Font.GothamBold
@@ -321,8 +548,9 @@ local function createGUI()
         -- Close functionality
         closeButton.MouseButton1Click:Connect(function()
             screenGui:Destroy()
-            checkpointCache = {}
-            checkpointList = {}
+            screenGui = nil
+            scrollingFrame = nil
+            titleText = nil
         end)
         
         -- Scroll Frame Container
@@ -340,7 +568,7 @@ local function createGUI()
         scrollCorner.Parent = scrollFrame
         
         -- Scrolling Frame
-        local scrollingFrame = Instance.new("ScrollingFrame")
+        scrollingFrame = Instance.new("ScrollingFrame")
         scrollingFrame.Name = "ScrollingFrame"
         scrollingFrame.Size = UDim2.new(1, 0, 1, 0)
         scrollingFrame.Position = UDim2.new(0, 0, 0, 0)
@@ -364,86 +592,12 @@ local function createGUI()
         padding.PaddingRight = UDim.new(0, 8)
         padding.Parent = scrollingFrame
         
-        -- Fungsi untuk membuat button checkpoint
-        local function createCheckpointButton(index, checkpointData)
-            local button = Instance.new("TextButton")
-            button.Name = "Cp_" .. index
-            button.LayoutOrder = index
-            button.Size = UI_CONFIG.Button.Size
-            button.BackgroundColor3 = UI_CONFIG.Button.BackgroundColor
-            button.BorderSizePixel = 0
-            button.Text = checkpointData.Name
-            button.TextColor3 = UI_CONFIG.Button.TextColor
-            button.TextSize = 15
-            button.Font = Enum.Font.Gotham
-            button.TextXAlignment = Enum.TextXAlignment.Left
-            button.Parent = scrollingFrame
-            
-            -- Padding untuk text
-            local textPadding = Instance.new("UIPadding")
-            textPadding.PaddingLeft = UDim.new(0, 12)
-            textPadding.Parent = button
-            
-            -- Rounded corners
-            local buttonCorner = Instance.new("UICorner")
-            buttonCorner.CornerRadius = UDim.new(0, 8)
-            buttonCorner.Parent = button
-            
-            -- Hover effect
-            local originalColor = button.BackgroundColor3
-            button.MouseEnter:Connect(function()
-                TweenService:Create(
-                    button,
-                    TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-                    {BackgroundColor3 = UI_CONFIG.Button.HoverColor}
-                ):Play()
-            end)
-            
-            button.MouseLeave:Connect(function()
-                TweenService:Create(
-                    button,
-                    TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-                    {BackgroundColor3 = originalColor}
-                ):Play()
-            end)
-            
-            -- Click event untuk teleport
-            button.MouseButton1Click:Connect(function()
-                local success = teleportToCheckpoint(checkpointData)
-                
-                if success then
-                    -- Visual feedback
-                    local originalText = button.Text
-                    button.Text = "✓ " .. originalText
-                    TweenService:Create(
-                        button,
-                        TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-                        {BackgroundColor3 = UI_CONFIG.Button.ActiveColor}
-                    ):Play()
-                    
-                    wait(0.6)
-                    
-                    button.Text = originalText
-                    TweenService:Create(
-                        button,
-                        TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-                        {BackgroundColor3 = originalColor}
-                    ):Play()
-                end
-            end)
-        end
-        
-        -- Membuat buttons untuk semua checkpoint yang ditemukan
-        for i, checkpointData in ipairs(checkpointList) do
-            createCheckpointButton(i, checkpointData)
-        end
-        
-        -- Update canvas size ketika layout berubah
+        -- Update canvas size
         listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
             scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, listLayout.AbsoluteContentSize.Y + 16)
         end)
         
-        -- Drag functionality untuk main frame
+        -- Drag functionality
         local dragging = false
         local dragInput = nil
         local dragStart = nil
@@ -485,12 +639,30 @@ local function createGUI()
             end
         end)
         
+        -- Update GUI dengan unlocked checkpoints
+        updateGUI()
+        
         return screenGui
     end)
     
     if not success then
         warn("Error membuat GUI: " .. tostring(err))
         return nil
+    end
+end
+
+-- Inisialisasi DataStore
+local function initDataStore()
+    local success, store = pcall(function()
+        return DataStoreService:GetDataStore("CheckpointTeleportData")
+    end)
+    
+    if success then
+        dataStore = store
+        print("✓ DataStore initialized")
+    else
+        warn("DataStore tidak tersedia, menggunakan memory cache")
+        dataStore = nil
     end
 end
 
@@ -501,18 +673,39 @@ player.CharacterAdded:Connect(function(newCharacter)
 end)
 
 -- Inisialisasi
+initDataStore()
+
 if character then
     humanoidRootPart = character:WaitForChild("HumanoidRootPart")
 end
 
--- Membuat GUI
-local gui = createGUI()
-
-if gui then
-    print("✓ Checkpoint Teleport GUI berhasil dibuat!")
-    print("✓ " .. #checkpointList .. " checkpoint ditemukan di map")
-    print("Gunakan GUI untuk memilih checkpoint dan teleport ke lokasi tersebut.")
-    print("Klik tombol X untuk menutup GUI.")
+-- Scan checkpoint
+if scanAllCheckpoints() then
+    -- Load saved data
+    loadCheckpointData()
+    
+    -- Deteksi checkpoint setiap frame
+    RunService.Heartbeat:Connect(function()
+        detectNearbyCheckpoints()
+    end)
+    
+    -- Auto-save setiap interval
+    spawn(function()
+        while true do
+            wait(CONFIG.SaveInterval)
+            if #unlockedCheckpoints > 0 then
+                saveCheckpointData()
+            end
+        end
+    end)
+    
+    -- Membuat GUI
+    createGUI()
+    
+    print("✓ Checkpoint Teleport System Loaded!")
+    print("✓ " .. #allCheckpoints .. " checkpoints ditemukan di map")
+    print("✓ " .. #unlockedCheckpoints .. " checkpoint sudah di-unlock")
+    print("Jalankan script untuk membuka GUI dan teleport ke checkpoint yang sudah dilewati.")
 else
-    warn("✗ Gagal membuat Checkpoint Teleport GUI!")
+    warn("✗ Tidak ada checkpoint ditemukan di map!")
 end
